@@ -1,19 +1,45 @@
-from ProcessPaths.IntegrateStoppingPower import euler_integrate_inverse_stopping_power
-from ProcessPaths.PathLengthPerPixel import compute_path_length_per_pixel
+from concurrent.futures import ProcessPoolExecutor
 import numpy as np
+
+from ProcessPaths.IntegrateStoppingPower import (
+    euler_integrate_inverse_stopping_power,
+)
+from ProcessPaths.PathLengthPerPixel import (
+    compute_path_length_per_pixel,
+)
+
+
+def _process_single(args):
+    i, event, path, config = args
+
+    print(event["name"])
+
+    p = -euler_integrate_inverse_stopping_power(
+        event["energy_in"],
+        event["energy_out"],
+    )
+
+    H = compute_path_length_per_pixel(path, config)
+
+    return i, p, H
+
 
 def processPaths(events, paths, config):
 
     N = config.N
     n = config.n
-    H = np.zeros((N, n*n))
+
     p = np.zeros(N)
-    nameStrings = events["name"]
-    i = 0
-    for name in nameStrings:
-        print(name)
-        p[i] = -1 * euler_integrate_inverse_stopping_power(events["energy_in"][i], events["energy_out"][i])
-        H[i] = compute_path_length_per_pixel(paths[i], config)
-        i += 1
+    H = np.zeros((N, n * n))
+
+    tasks = [
+        (i, events[i], paths[i], config)
+        for i in range(N)
+    ]
+
+    with ProcessPoolExecutor() as executor:
+        for i, p_i, H_i in executor.map(_process_single, tasks):
+            p[i] = p_i
+            H[i] = H_i
 
     return p, H

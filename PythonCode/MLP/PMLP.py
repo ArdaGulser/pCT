@@ -1,3 +1,4 @@
+from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 from scipy import integrate as spi
 import MLP.IntegrateBethe as ib
@@ -18,47 +19,48 @@ def estimate_exit_angle(spread):
 
 
 
+def _evaluate_single(args):
+    event, config = args
+
+    print(event["name"])
+    currentMLP = []
+
+    # Get Equivalent Point Beam Spread and use it for approx exit position
+    radius = np.sqrt(np.abs(event["sigma_y"]**2 - config.initial_spread)) / 4
+
+    x0 = event["x0"]
+    y0 = event["y0"]
+    x2 = event["mean_x"]
+    y2 = event["mean_y"] + radius
+    t0 = 0
+    t2 = estimate_exit_angle(radius)
+
+    # ----DEBUG_SECTION----
+    MLPath = np.linspace(y0, y2, num=20)
+    UVecs = np.linspace(x0, x2, num=20)
+    # ---------------------
+
+    # When you're ready, replace the two lines above with:
+    #MLPath, UVecs = YLPFormula(x0, 20, x2, y0, t0, y2, t2, (x2 - x0) / 200, config)
+
+    MLPX_pix, MLPY_pix = rotatePoints(
+        event["angle"],
+        MLPath,
+        UVecs,
+        config,
+    )
+
+    for x, y in zip(MLPX_pix, MLPY_pix):
+        currentMLP.append((x, y))
+
+    return currentMLP
+
+
 def evaluateMLP(events, config):
-    nameStrings = events["name"]
-    paths = []
-    i = 0
-    for name in nameStrings:
-        print(name)
-        currentMLP = []
+    tasks = [(event, config) for event in events]
 
-        
-
-        #Get Equivalent Point Beam Spread and use it for approx exit position
-        radius = np.sqrt(np.abs(events["sigma_y"][i]**2 - config.initial_spread)) / 4
-
-        x0 = events["x0"][i]
-        y0 = events["y0"][i]
-        x2 = events["mean_x"][i]
-        y2 = events["mean_y"][i] + radius #We just shift the y exit position by the beam spread
-        t0 = 0
-        t2 = estimate_exit_angle(radius)
-
-        #Calculate the MLP
-        #MLPath, UVecs = YLPFormula(x0, 20, x2, y0, t0, y2, t2, (x2-x0)/200, config)
-
-        #----DEBUG_SECTION, DELETE LATER--------#
-        #Be sure to uncomment YLP formula call
-        MLPath = np.linspace(y0, y2, num=20)
-        UVecs = np.linspace(x0, x2, num=20)
-        #---------------------------------------#
-
-        MLPX_pix, MLPY_pix = rotatePoints(events["angle"][i], MLPath, UVecs, config)
-
-
-        # Build path list
-        for j in range(len(MLPX_pix)):
-            data = (MLPX_pix[j], MLPY_pix[j])
-            currentMLP.append(data)
-
-        paths.append(currentMLP)
-
-   
-        i += 1
+    with ProcessPoolExecutor() as executor:
+        paths = list(executor.map(_evaluate_single, tasks))
 
     return paths
 
