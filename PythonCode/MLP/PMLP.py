@@ -1,4 +1,5 @@
 from concurrent.futures import ProcessPoolExecutor
+from itertools import repeat
 import numpy as np
 from scipy import integrate as spi
 import MLP.IntegrateBethe as ib
@@ -19,8 +20,8 @@ def estimate_exit_angle(spread):
 
 
 
-def _evaluate_single(args):
-    event, config = args
+def _evaluate_single(event, config):
+    
 
     print(event["name"])
     currentMLP = []
@@ -60,7 +61,12 @@ def evaluateMLP(events, config):
     tasks = [(event, config) for event in events]
 
     with ProcessPoolExecutor() as executor:
-        paths = list(executor.map(_evaluate_single, tasks))
+        paths = list(executor.map(
+            _evaluate_single,
+            events,
+            repeat(config),
+            chunksize=50
+        ))
 
     return paths
 
